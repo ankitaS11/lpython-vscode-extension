@@ -63,6 +63,7 @@ connection.onInitialize((params: InitializeParams) => {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			documentSymbolProvider: true,
+			definitionProvider: true,
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -84,8 +85,42 @@ connection.onInitialized(() => {
 	if (hasWorkspaceFolderCapability) {
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		connection.workspace.onDidChangeWorkspaceFolders(_event => {
-			// connection.console.log('Workspace folder change event received.');
+			connection.console.log('Workspace folder change event received.');
 		});
+	}
+});
+
+connection.onDefinition(async (request) => {
+	console.time('onDefinition');
+	const document = documents.get(request.textDocument.uri);
+	const settings = await getDocumentSettings(request.textDocument.uri);
+	const text = document?.getText();
+	const symbols: SymbolInformation[] = [];
+	if (typeof text == "string") {
+		// console.log("request: ");
+		// console.log(request);
+		// console.log("index: " + convertPosition(request.position, text));
+		const stdout = await runCompiler(text, "--show-definitions ", settings);
+		console.log("got: ", stdout);
+		const obj = JSON.parse(stdout);
+		for (let i=0; i<obj.length; i++) {
+			if (obj[i].location) {
+				return [{
+					targetUri: request.textDocument.uri,
+					targetRange: { start: { line: obj[i].location.range.start.line, character: obj[i].location.range.start.character}, 
+									end: {line: obj[i].location.range.end.line, character: obj[i].location.range.end.character}
+								},
+					targetSelectionRange: { start: { line: obj[i].location.range.start.line, character: obj[i].location.range.start.character},
+											  end: {line: obj[i].location.range.end.line, character: obj[i].location.range.end.character} },
+					originSelectionRange: {
+						start: { line: request.position.line, character: Math.max(0, request.position.character - 4) },
+						end: { line: request.position.line, character: request.position.character + 4 }
+					}
+				}];
+			}
+		}
+	// console.timeEnd('onDefinition');
+	return undefined;
 	}
 });
 
@@ -100,7 +135,7 @@ interface ExampleSettings {
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
 // Please note that this is not the case when using this server with the client provided in this example
 // but could happen with other clients.
-const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000, compiler: { executablePath: "/home/ankita/Documents/Internships/GSI/lpython/src/bin/lpython" } };
+const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000, compiler: { executablePath: "lpython" } };
 let globalSettings: ExampleSettings = defaultSettings;
 
 // Cache the settings of all open documents
